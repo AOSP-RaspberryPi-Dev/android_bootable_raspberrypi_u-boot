@@ -66,10 +66,10 @@
 
 #ifdef CONFIG_ARM64
 #define FDT_HIGH "ffffffffffffffff"
-#define INITRD_HIGH "4400000"
+#define INITRD_HIGH "ffffffffffffffff"
 #else
 #define FDT_HIGH "ffffffff"
-#define INITRD_HIGH "4400000"
+#define INITRD_HIGH "ffffffff"
 #endif
 
 /*
