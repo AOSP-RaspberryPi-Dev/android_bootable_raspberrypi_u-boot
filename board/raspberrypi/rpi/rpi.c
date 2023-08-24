@@ -550,6 +550,13 @@ void  update_fdt_from_fw(void *fdt, void *fw_fdt)
 
 	/* address of the PHY device as provided by the firmware  */
 	copy_property(fdt, fw_fdt, "ethernet0/mdio@e14/ethernet-phy@1", "reg");
+
+	/* bluetooth address as provided by the firmware */
+	copy_property(fdt, fw_fdt, "/soc/serial@7e201000/bluetooth", "local-bd-address");
+
+	/* UART0 pins as provided by the firmware */
+	copy_property(fdt, fw_fdt, "/soc/gpio@7e200000/uart0_pins", "brcm,pins");
+	copy_property(fdt, fw_fdt, "/soc/gpio@7e200000/uart0_pins", "brcm,pull");
 }
 
 int ft_board_setup(void *blob, struct bd_info *bd)
