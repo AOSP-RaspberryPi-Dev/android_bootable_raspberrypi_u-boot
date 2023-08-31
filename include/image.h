@@ -1744,11 +1744,12 @@ struct andr_image_data;
  *
  * @boot_hdr: Pointer to boot image header
  * @vendor_boot_hdr: Pointer to vendor boot image header
+ * @init_boot_hdr: Pointer to init boot image header
  * @data: Pointer to generic boot format structure
  * Return: true if succeeded, false otherwise
  */
 bool android_image_get_data(const void *boot_hdr, const void *vendor_boot_hdr,
-			    struct andr_image_data *data);
+			    const void *init_boot_hdr, struct andr_image_data *data);
 
 struct andr_boot_img_hdr_v0;
 
@@ -1779,12 +1780,13 @@ int android_image_get_kernel(const void *hdr,
  *
  * @hdr:	Pointer to image header
  * @vendor_boot_img : Pointer to vendor boot image header
+ * @init_boot_img: Pointer to init boot image header
  * @rd_data:	Pointer to a ulong variable, will hold ramdisk address
  * @rd_len:	Pointer to a ulong variable, will hold ramdisk length
  * Return: 0 if succeeded, -1 if ramdisk size is 0
  */
 int android_image_get_ramdisk(const void *hdr, const void *vendor_boot_img,
-			      ulong *rd_data, ulong *rd_len);
+			      const void *init_boot_img, ulong *rd_data, ulong *rd_len);
 
 /**
  * android_image_get_second() - Extracts the secondary bootloader address
@@ -1900,6 +1902,14 @@ ulong get_abootimg_addr(void);
  * Return: Android vendor boot image address
  */
 ulong get_avendor_bootimg_addr(void);
+
+/**
+ * get_ainit_bootimg_addr() - Get Android init boot image address
+ *
+ * Return: Android init boot image address
+ *
+ */
+ulong get_ainit_bootimg_addr(void);
 
 /**
  * board_fit_config_name_match() - Check for a matching board name

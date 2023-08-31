@@ -162,6 +162,26 @@ static void android_vendor_boot_image_v3_v4_parse_hdr(const struct andr_vnd_boot
 	data->vendor_boot_img_total_size = end - (ulong)hdr;
 }
 
+static void android_init_boot_image_v4_parse_hdr(const struct andr_boot_img_hdr_v3 *hdr,
+						 struct andr_image_data *data)
+{
+	ulong end;
+
+	/*
+	 * The header takes a full page, the remaining components are aligned
+	 * on page boundary.
+	 */
+	end = (ulong)hdr;
+	end += ANDR_GKI_PAGE_SIZE;
+	data->init_ramdisk_ptr = end;
+	data->init_ramdisk_size = hdr->ramdisk_size;
+	data->ramdisk_size += hdr->ramdisk_size;
+	end += ALIGN(hdr->ramdisk_size, ANDR_GKI_PAGE_SIZE);
+	end += ALIGN(hdr->signature_size, ANDR_GKI_PAGE_SIZE);
+
+	data->init_boot_img_total_size = end - (ulong)hdr;
+}
+
 static void android_boot_image_v0_v1_v2_parse_hdr(const struct andr_boot_img_hdr_v0 *hdr,
 						  struct andr_image_data *data)
 {
@@ -211,7 +231,7 @@ static void android_boot_image_v0_v1_v2_parse_hdr(const struct andr_boot_img_hdr
 }
 
 bool android_image_get_data(const void *boot_hdr, const void *vendor_boot_hdr,
-			    struct andr_image_data *data)
+			    const void* init_boot_hdr, struct andr_image_data *data)
 {
 	if (!boot_hdr || !data) {
 		printf("boot_hdr or data params can't be NULL\n");
@@ -234,6 +254,15 @@ bool android_image_get_data(const void *boot_hdr, const void *vendor_boot_hdr,
 		}
 		android_boot_image_v3_v4_parse_hdr(boot_hdr, data);
 		android_vendor_boot_image_v3_v4_parse_hdr(vendor_boot_hdr, data);
+
+		if (init_boot_hdr && (ulong)init_boot_hdr != -1) {
+			if (!is_android_boot_image_header(init_boot_hdr)) {
+				printf("Incorrect init boot image header\n");
+				return false;
+			}
+
+			android_init_boot_image_v4_parse_hdr(init_boot_hdr, data);
+		}
 	} else {
 		android_boot_image_v0_v1_v2_parse_hdr(boot_hdr, data);
 	}
@@ -292,7 +321,7 @@ int android_image_get_kernel(const void *hdr,
 	u32 kernel_addr;
 	const struct legacy_img_hdr *ihdr;
 
-	if (!android_image_get_data(hdr, vendor_boot_img, &img_data))
+	if (!android_image_get_data(hdr, vendor_boot_img, NULL, &img_data))
 		return -EINVAL;
 
 	kernel_addr = android_image_get_kernel_addr(&img_data);
@@ -379,7 +408,7 @@ ulong android_image_get_end(const struct andr_boot_img_hdr_v0 *hdr,
 {
 	struct andr_image_data img_data;
 
-	if (!android_image_get_data(hdr, vendor_boot_img, &img_data))
+	if (!android_image_get_data(hdr, vendor_boot_img, NULL, &img_data))
 		return -EINVAL;
 
 	if (img_data.header_version > 2)
@@ -393,7 +422,7 @@ ulong android_image_get_kload(const void *hdr,
 {
 	struct andr_image_data img_data;
 
-	if (!android_image_get_data(hdr, vendor_boot_img, &img_data))
+	if (!android_image_get_data(hdr, vendor_boot_img, NULL, &img_data))
 		return -EINVAL;
 
 	return android_image_get_kernel_addr(&img_data);
@@ -405,7 +434,7 @@ ulong android_image_get_kcomp(const void *hdr,
 	struct andr_image_data img_data;
 	const void *p;
 
-	if (!android_image_get_data(hdr, vendor_boot_img, &img_data))
+	if (!android_image_get_data(hdr, vendor_boot_img, NULL, &img_data))
 		return -EINVAL;
 
 	p = (const void *)img_data.kernel_ptr;
@@ -418,12 +447,12 @@ ulong android_image_get_kcomp(const void *hdr,
 }
 
 int android_image_get_ramdisk(const void *hdr, const void *vendor_boot_img,
-			      ulong *rd_data, ulong *rd_len)
+			      const void *init_boot_img, ulong *rd_data, ulong *rd_len)
 {
 	struct andr_image_data img_data = {0};
 	ulong ramdisk_ptr;
 
-	if (!android_image_get_data(hdr, vendor_boot_img, &img_data))
+	if (!android_image_get_data(hdr, vendor_boot_img, init_boot_img, &img_data))
 		return -EINVAL;
 
 	if (!img_data.ramdisk_size) {
@@ -437,10 +466,16 @@ int android_image_get_ramdisk(const void *hdr, const void *vendor_boot_img,
 		memcpy((void *)(ramdisk_ptr + img_data.vendor_ramdisk_size),
 		       (void *)img_data.ramdisk_ptr,
 		       img_data.boot_ramdisk_size);
+		if (img_data.init_ramdisk_size) {
+			memcpy((void *)(ramdisk_ptr + img_data.vendor_ramdisk_size +
+			       img_data.boot_ramdisk_size),
+			       (void *)img_data.init_ramdisk_ptr,
+			       img_data.init_ramdisk_size);
+		}
 		if (img_data.bootconfig_size) {
 			memcpy((void *)
 			       (ramdisk_ptr + img_data.vendor_ramdisk_size +
-			       img_data.boot_ramdisk_size),
+			       img_data.boot_ramdisk_size + img_data.init_ramdisk_size),
 			       (void *)img_data.bootconfig_addr,
 			       img_data.bootconfig_size);
 		}
@@ -459,7 +494,7 @@ int android_image_get_second(const void *hdr, ulong *second_data, ulong *second_
 {
 	struct andr_image_data img_data;
 
-	if (!android_image_get_data(hdr, NULL, &img_data))
+	if (!android_image_get_data(hdr, NULL, NULL, &img_data))
 		return -EINVAL;
 
 	if (img_data.header_version > 2) {
@@ -631,7 +666,7 @@ bool android_image_get_dtb_by_index(ulong hdr_addr, ulong vendor_boot_img,
 	hdr = map_sysmem(hdr_addr, sizeof(*hdr));
 	if (vendor_boot_img != -1)
 		vhdr = map_sysmem(vendor_boot_img, sizeof(*vhdr));
-	if (!android_image_get_data(hdr, vhdr, &img_data)) {
+	if (!android_image_get_data(hdr, vhdr, NULL, &img_data)) {
 		if (vendor_boot_img != -1)
 			unmap_sysmem(vhdr);
 		unmap_sysmem(hdr);
