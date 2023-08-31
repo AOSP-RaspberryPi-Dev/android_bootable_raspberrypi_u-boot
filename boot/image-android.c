@@ -57,6 +57,36 @@ static ulong add_trailer(ulong bootconfig_start_addr, ulong bootconfig_size)
 	return BOOTCONFIG_TRAILER_SIZE;
 }
 
+int32_t add_bootconfig_parameters(const char* params, ulong params_size,
+				  ulong bootconfig_start_addr, ulong bootconfig_size) {
+	if (!params || !bootconfig_start_addr) {
+		return -1;
+	}
+	if (params_size == 0) {
+		return 0;
+	}
+	ulong applied_bytes = 0;
+	ulong new_size = 0;
+	ulong end = bootconfig_start_addr + bootconfig_size;
+
+	if (is_trailer_present(end)) {
+		end -= BOOTCONFIG_TRAILER_SIZE;
+		applied_bytes -= BOOTCONFIG_TRAILER_SIZE;
+		memcpy(&new_size, (void *)end, BOOTCONFIG_SIZE_SIZE);
+	} else {
+		new_size = bootconfig_size;
+	}
+
+	// params
+	memcpy((void*)end, params, params_size);
+
+	applied_bytes += params_size;
+	applied_bytes += add_trailer(bootconfig_start_addr,
+				     bootconfig_size + applied_bytes);
+
+	return applied_bytes;
+}
+
 static void android_boot_image_v3_v4_parse_hdr(const struct andr_boot_img_hdr_v3 *hdr,
 					       struct andr_image_data *data)
 {
@@ -117,6 +147,13 @@ static void android_vendor_boot_image_v3_v4_parse_hdr(const struct andr_vnd_boot
 	end += ALIGN(hdr->vendor_ramdisk_table_size, hdr->page_size);
 	data->bootconfig_addr = end;
 	if (hdr->bootconfig_size) {
+		const char* extra_bootconfig = env_get("extra_bootconfig");
+		if (extra_bootconfig) {
+			data->bootconfig_size += add_bootconfig_parameters(extra_bootconfig,
+									   strlen(extra_bootconfig),
+									   data->bootconfig_addr,
+									   data->bootconfig_size);
+		}
 		data->bootconfig_size += add_trailer(data->bootconfig_addr,
 						     data->bootconfig_size);
 		data->ramdisk_size += data->bootconfig_size;
