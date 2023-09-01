@@ -119,7 +119,6 @@ static void android_vendor_boot_image_v3_v4_parse_hdr(const struct andr_vnd_boot
 						      *hdr, struct andr_image_data *data)
 {
 	ulong end;
-
 	/*
 	 * The header takes a full page, the remaining components are aligned
 	 * on page boundary.
@@ -139,10 +138,8 @@ static void android_vendor_boot_image_v3_v4_parse_hdr(const struct andr_vnd_boot
 		data->ramdisk_size += hdr->vendor_ramdisk_size;
 		end += ALIGN(hdr->vendor_ramdisk_size, hdr->page_size);
 	}
-
 	data->dtb_ptr = end;
 	data->dtb_size = hdr->dtb_size;
-
 	end += ALIGN(hdr->dtb_size, hdr->page_size);
 	end += ALIGN(hdr->vendor_ramdisk_table_size, hdr->page_size);
 	data->bootconfig_addr = end;
@@ -160,6 +157,30 @@ static void android_vendor_boot_image_v3_v4_parse_hdr(const struct andr_vnd_boot
 	}
 	end += ALIGN(data->bootconfig_size, hdr->page_size);
 	data->vendor_boot_img_total_size = end - (ulong)hdr;
+}
+
+static void android_vendor_kernel_boot_image_v4_parse_hdr(const struct andr_vnd_boot_img_hdr
+						      *hdr, struct andr_image_data *data)
+{
+	ulong end;
+	/*
+	 * The header takes a full page, the remaining components are aligned
+	 * on page boundary.
+	 */
+	data->dtb_load_addr = hdr->dtb_addr;
+	end = (ulong)hdr;
+	end += hdr->page_size;
+	if (hdr->vendor_ramdisk_size) {
+		data->vendor_kernel_ramdisk_ptr = end;
+		data->vendor_kernel_ramdisk_size = hdr->vendor_ramdisk_size;
+		data->ramdisk_size += hdr->vendor_ramdisk_size;
+		end += ALIGN(hdr->vendor_ramdisk_size, hdr->page_size);
+	}
+	data->dtb_ptr = end;
+	data->dtb_size = hdr->dtb_size;
+	end += ALIGN(hdr->dtb_size, hdr->page_size);
+	end += ALIGN(hdr->vendor_ramdisk_table_size, hdr->page_size);
+	data->vendor_kernel_boot_img_total_size = end - (ulong)hdr;
 }
 
 static void android_init_boot_image_v4_parse_hdr(const struct andr_boot_img_hdr_v3 *hdr,
@@ -231,7 +252,8 @@ static void android_boot_image_v0_v1_v2_parse_hdr(const struct andr_boot_img_hdr
 }
 
 bool android_image_get_data(const void *boot_hdr, const void *vendor_boot_hdr,
-			    const void* init_boot_hdr, struct andr_image_data *data)
+			    const void* init_boot_hdr, const void *vendor_kernel_boot_hdr,
+			    struct andr_image_data *data)
 {
 	if (!boot_hdr || !data) {
 		printf("boot_hdr or data params can't be NULL\n");
@@ -262,6 +284,15 @@ bool android_image_get_data(const void *boot_hdr, const void *vendor_boot_hdr,
 			}
 
 			android_init_boot_image_v4_parse_hdr(init_boot_hdr, data);
+		}
+
+		if (vendor_kernel_boot_hdr && (ulong)vendor_kernel_boot_hdr != -1) {
+			if (!is_android_vendor_boot_image_header(vendor_kernel_boot_hdr)) {
+				printf("Incorrect vendor kernel boot image header\n");
+				return false;
+			}
+
+			android_vendor_kernel_boot_image_v4_parse_hdr(vendor_kernel_boot_hdr, data);
 		}
 	} else {
 		android_boot_image_v0_v1_v2_parse_hdr(boot_hdr, data);
@@ -321,7 +352,7 @@ int android_image_get_kernel(const void *hdr,
 	u32 kernel_addr;
 	const struct legacy_img_hdr *ihdr;
 
-	if (!android_image_get_data(hdr, vendor_boot_img, NULL, &img_data))
+	if (!android_image_get_data(hdr, vendor_boot_img, NULL, NULL, &img_data))
 		return -EINVAL;
 
 	kernel_addr = android_image_get_kernel_addr(&img_data);
@@ -408,7 +439,7 @@ ulong android_image_get_end(const struct andr_boot_img_hdr_v0 *hdr,
 {
 	struct andr_image_data img_data;
 
-	if (!android_image_get_data(hdr, vendor_boot_img, NULL, &img_data))
+	if (!android_image_get_data(hdr, vendor_boot_img, NULL, NULL, &img_data))
 		return -EINVAL;
 
 	if (img_data.header_version > 2)
@@ -422,7 +453,7 @@ ulong android_image_get_kload(const void *hdr,
 {
 	struct andr_image_data img_data;
 
-	if (!android_image_get_data(hdr, vendor_boot_img, NULL, &img_data))
+	if (!android_image_get_data(hdr, vendor_boot_img, NULL, NULL, &img_data))
 		return -EINVAL;
 
 	return android_image_get_kernel_addr(&img_data);
@@ -434,7 +465,7 @@ ulong android_image_get_kcomp(const void *hdr,
 	struct andr_image_data img_data;
 	const void *p;
 
-	if (!android_image_get_data(hdr, vendor_boot_img, NULL, &img_data))
+	if (!android_image_get_data(hdr, vendor_boot_img, NULL, NULL, &img_data))
 		return -EINVAL;
 
 	p = (const void *)img_data.kernel_ptr;
@@ -447,12 +478,14 @@ ulong android_image_get_kcomp(const void *hdr,
 }
 
 int android_image_get_ramdisk(const void *hdr, const void *vendor_boot_img,
-			      const void *init_boot_img, ulong *rd_data, ulong *rd_len)
+			      const void *init_boot_img, const void *vendor_kernel_boot_img,
+			      ulong *rd_data, ulong *rd_len)
 {
 	struct andr_image_data img_data = {0};
-	ulong ramdisk_ptr;
+	ulong ramdisk_ptr, offset;
 
-	if (!android_image_get_data(hdr, vendor_boot_img, init_boot_img, &img_data))
+	if (!android_image_get_data(hdr, vendor_boot_img, init_boot_img,
+				    vendor_kernel_boot_img, &img_data))
 		return -EINVAL;
 
 	if (!img_data.ramdisk_size) {
@@ -461,21 +494,29 @@ int android_image_get_ramdisk(const void *hdr, const void *vendor_boot_img,
 	}
 	if (img_data.header_version > 2) {
 		ramdisk_ptr = img_data.ramdisk_ptr;
+		offset = 0;
 		memcpy((void *)(ramdisk_ptr), (void *)img_data.vendor_ramdisk_ptr,
 		       img_data.vendor_ramdisk_size);
-		memcpy((void *)(ramdisk_ptr + img_data.vendor_ramdisk_size),
+		offset += img_data.vendor_ramdisk_size;
+		if (img_data.vendor_kernel_ramdisk_size) {
+			memcpy((void *)(ramdisk_ptr + offset),
+			       (void *)img_data.vendor_kernel_ramdisk_ptr,
+			       img_data.vendor_kernel_ramdisk_size);
+			offset += img_data.vendor_kernel_ramdisk_size;
+		}
+		memcpy((void *)(ramdisk_ptr + offset),
 		       (void *)img_data.ramdisk_ptr,
 		       img_data.boot_ramdisk_size);
+		offset += img_data.boot_ramdisk_size;
 		if (img_data.init_ramdisk_size) {
-			memcpy((void *)(ramdisk_ptr + img_data.vendor_ramdisk_size +
-			       img_data.boot_ramdisk_size),
+			memcpy((void *)(ramdisk_ptr + offset),
 			       (void *)img_data.init_ramdisk_ptr,
 			       img_data.init_ramdisk_size);
+			offset += img_data.init_ramdisk_size;
 		}
 		if (img_data.bootconfig_size) {
 			memcpy((void *)
-			       (ramdisk_ptr + img_data.vendor_ramdisk_size +
-			       img_data.boot_ramdisk_size + img_data.init_ramdisk_size),
+			       (ramdisk_ptr + offset),
 			       (void *)img_data.bootconfig_addr,
 			       img_data.bootconfig_size);
 		}
@@ -494,7 +535,7 @@ int android_image_get_second(const void *hdr, ulong *second_data, ulong *second_
 {
 	struct andr_image_data img_data;
 
-	if (!android_image_get_data(hdr, NULL, NULL, &img_data))
+	if (!android_image_get_data(hdr, NULL, NULL, NULL, &img_data))
 		return -EINVAL;
 
 	if (img_data.header_version > 2) {
@@ -580,11 +621,12 @@ exit:
  * android_image_get_dtb_img_addr() - Get the address of DTB area in boot image.
  * @hdr_addr: Boot image header address
  * @vhdr_addr: Vendor Boot image header address
+ * @vkhdr_addr: Vendor Kernel Boot image header address
  * @addr: Will contain the address of DTB area in boot image
  *
  * Return: true on success or false on fail.
  */
-static bool android_image_get_dtb_img_addr(ulong hdr_addr, ulong vhdr_addr, ulong *addr)
+static bool android_image_get_dtb_img_addr(ulong hdr_addr, ulong vhdr_addr, ulong vkhdr_addr, ulong *addr)
 {
 	const struct andr_boot_img_hdr_v0 *hdr;
 	const struct andr_vnd_boot_img_hdr *v_hdr;
@@ -622,7 +664,10 @@ static bool android_image_get_dtb_img_addr(ulong hdr_addr, ulong vhdr_addr, ulon
 	}
 
 	if (hdr->header_version > 2) {
-		v_hdr = map_sysmem(vhdr_addr, sizeof(*v_hdr));
+		if (vkhdr_addr && vkhdr_addr != -1)
+			v_hdr = map_sysmem(vkhdr_addr, sizeof(*v_hdr));
+		else
+			v_hdr = map_sysmem(vhdr_addr, sizeof(*v_hdr));
 		if (!v_hdr->dtb_size) {
 			printf("Error: dtb_size is 0\n");
 			ret = false;
@@ -630,7 +675,7 @@ static bool android_image_get_dtb_img_addr(ulong hdr_addr, ulong vhdr_addr, ulon
 			goto exit;
 		}
 		/* Calculate the address of DTB area in boot image */
-		dtb_img_addr = vhdr_addr;
+		dtb_img_addr = (ulong)v_hdr;
 		dtb_img_addr += v_hdr->page_size;
 		if (v_hdr->vendor_ramdisk_size)
 			dtb_img_addr += ALIGN(v_hdr->vendor_ramdisk_size, v_hdr->page_size);
@@ -647,6 +692,7 @@ exit:
  * android_image_get_dtb_by_index() - Get address and size of blob in DTB area.
  * @hdr_addr: Boot image header address
  * @vendor_boot_img: Pointer to vendor boot image header, which is at the start of the image.
+ * @vendor_kernel_boot_img: Pointer to vendor kernel boot image header, which is at the start of the image.
  * @index: Index of desired DTB in DTB area (starting from 0)
  * @addr: If not NULL, will contain address to specified DTB
  * @size: If not NULL, will contain size of specified DTB
@@ -657,21 +703,29 @@ exit:
  * Return: true on success or false on error.
  */
 bool android_image_get_dtb_by_index(ulong hdr_addr, ulong vendor_boot_img,
+				    ulong vendor_kernel_boot_img,
 				    u32 index, ulong *addr, u32 *size)
 {
 	struct andr_image_data img_data;
 	const struct andr_boot_img_hdr_v0 *hdr;
 	const struct andr_vnd_boot_img_hdr *vhdr;
+	const struct andr_vnd_boot_img_hdr *vkhdr;
 
 	hdr = map_sysmem(hdr_addr, sizeof(*hdr));
 	if (vendor_boot_img != -1)
 		vhdr = map_sysmem(vendor_boot_img, sizeof(*vhdr));
-	if (!android_image_get_data(hdr, vhdr, NULL, &img_data)) {
+	if (vendor_kernel_boot_img != -1)
+		vkhdr = map_sysmem(vendor_kernel_boot_img, sizeof(*vkhdr));
+	if (!android_image_get_data(hdr, vhdr, NULL, vkhdr, &img_data)) {
+		if (vendor_kernel_boot_img != -1)
+			unmap_sysmem(vkhdr);
 		if (vendor_boot_img != -1)
 			unmap_sysmem(vhdr);
 		unmap_sysmem(hdr);
 		return false;
 	}
+	if (vendor_kernel_boot_img != -1)
+		unmap_sysmem(vkhdr);
 	if (vendor_boot_img != -1)
 		unmap_sysmem(vhdr);
 	unmap_sysmem(hdr);
@@ -681,7 +735,7 @@ bool android_image_get_dtb_by_index(ulong hdr_addr, ulong vendor_boot_img,
 	ulong dtb_addr;		/* address of DTB blob with specified index  */
 	u32 i;			/* index iterator */
 
-	android_image_get_dtb_img_addr(hdr_addr, vendor_boot_img, &dtb_img_addr);
+	android_image_get_dtb_img_addr(hdr_addr, vendor_boot_img, vendor_kernel_boot_img, &dtb_img_addr);
 	/* Check if DTB area of boot image is in DTBO format */
 	if (android_dt_check_header(dtb_img_addr)) {
 		return android_dt_get_fdt_by_index(dtb_img_addr, index, addr,
@@ -837,7 +891,7 @@ bool android_image_print_dtb_contents(ulong hdr_addr)
 	ulong dtb_addr;		/* address of DTB blob with specified index  */
 	u32 i;			/* index iterator */
 
-	res = android_image_get_dtb_img_addr(hdr_addr, 0, &dtb_img_addr);
+	res = android_image_get_dtb_img_addr(hdr_addr, 0, 0, &dtb_img_addr);
 	if (!res)
 		return false;
 
