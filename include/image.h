@@ -1745,11 +1745,13 @@ struct andr_image_data;
  * @boot_hdr: Pointer to boot image header
  * @vendor_boot_hdr: Pointer to vendor boot image header
  * @init_boot_hdr: Pointer to init boot image header
+ * @vendor_kernel_boot_hdr: Pointer to vendor kernel boot image header
  * @data: Pointer to generic boot format structure
  * Return: true if succeeded, false otherwise
  */
 bool android_image_get_data(const void *boot_hdr, const void *vendor_boot_hdr,
-			    const void *init_boot_hdr, struct andr_image_data *data);
+			    const void *init_boot_hdr, const void *vendor_kernel_boot_hdr,
+			    struct andr_image_data *data);
 
 struct andr_boot_img_hdr_v0;
 
@@ -1781,12 +1783,14 @@ int android_image_get_kernel(const void *hdr,
  * @hdr:	Pointer to image header
  * @vendor_boot_img : Pointer to vendor boot image header
  * @init_boot_img: Pointer to init boot image header
+ * @vendor_kernel_boot_img: Pointer to vendor kernel boot image header
  * @rd_data:	Pointer to a ulong variable, will hold ramdisk address
  * @rd_len:	Pointer to a ulong variable, will hold ramdisk length
  * Return: 0 if succeeded, -1 if ramdisk size is 0
  */
 int android_image_get_ramdisk(const void *hdr, const void *vendor_boot_img,
-			      const void *init_boot_img, ulong *rd_data, ulong *rd_len);
+			      const void *init_boot_img, const void *vendor_kernel_boot_img,
+			      ulong *rd_data, ulong *rd_len);
 
 /**
  * android_image_get_second() - Extracts the secondary bootloader address
@@ -1806,6 +1810,7 @@ bool android_image_get_dtbo(ulong hdr_addr, ulong *addr, u32 *size);
  * android_image_get_dtb_by_index() - Get address and size of blob in DTB area.
  * @hdr_addr: Boot image header address
  * @vendor_boot_img: Pointer to vendor boot image header, which is at the start of the image.
+ * @vendor_kernel_boot_img: Pointer to vendor kernel boot image header, which is at the start of the image.
  * @index: Index of desired DTB in DTB area (starting from 0)
  * @addr: If not NULL, will contain address to specified DTB
  * @size: If not NULL, will contain size of specified DTB
@@ -1816,6 +1821,7 @@ bool android_image_get_dtbo(ulong hdr_addr, ulong *addr, u32 *size);
  * Return: true on success or false on error.
  */
 bool android_image_get_dtb_by_index(ulong hdr_addr, ulong vendor_boot_img,
+				    ulong vendor_kernel_boot_img,
 				    u32 index, ulong *addr, u32 *size);
 
 /**
@@ -1910,6 +1916,13 @@ ulong get_avendor_bootimg_addr(void);
  *
  */
 ulong get_ainit_bootimg_addr(void);
+
+/**
+ * get_avendor_kernel_bootimg_addr() - Get Android vendor kernel boot image address
+ *
+ * Return: Android vendor kernel boot image address
+ */
+ulong get_avendor_kernel_bootimg_addr(void);
 
 /**
  * board_fit_config_name_match() - Check for a matching board name

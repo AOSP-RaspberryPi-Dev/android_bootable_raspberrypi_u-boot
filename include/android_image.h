@@ -331,6 +331,8 @@ struct andr_image_data {
 	ulong kernel_ptr;  /* kernel address */
 	u32 kernel_size;  /* size in bytes */
 	u32 ramdisk_size;  /* size in bytes */
+	ulong vendor_kernel_ramdisk_ptr; /* vendor kernel ramdisk address */
+	u32 vendor_kernel_ramdisk_size; /* vendor kernel ramdisk size */
 	ulong init_ramdisk_ptr; /* init ramdisk address */
 	u32 init_ramdisk_size; /* init ramdisk size */
 	ulong vendor_ramdisk_ptr;  /* vendor ramdisk address */
@@ -359,6 +361,7 @@ struct andr_image_data {
 	u32 boot_img_total_size;  /* boot image size */
 	u32 vendor_boot_img_total_size;  /* vendor boot image size */
 	u32 init_boot_img_total_size; /* init boot image size */
+	u32 vendor_kernel_boot_img_total_size; /* vendor kernel boot image size */
 };
 
 #endif
