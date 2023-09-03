@@ -559,6 +559,10 @@ void  update_fdt_from_fw(void *fdt, void *fw_fdt)
 	copy_property(fdt, fw_fdt, "/soc/gpio/uart0_pins", "brcm,pull");
 	copy_property(fdt, fw_fdt, "/soc/gpio/uart1_pins", "brcm,pins");
 	copy_property(fdt, fw_fdt, "/soc/gpio/uart1_pins", "brcm,pull");
+
+	/* UART status as provided by the firmware */
+	copy_property(fdt, fw_fdt, "uart0", "status");
+	copy_property(fdt, fw_fdt, "uart1", "status");
 }
 
 int ft_board_setup(void *blob, struct bd_info *bd)
