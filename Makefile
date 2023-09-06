@@ -1812,7 +1812,12 @@ ENV_DIR := $(srctree)/board/$(BOARDDIR)
 ENV_SOURCE_FILE := $(CONFIG_ENV_SOURCE_FILE:"%"=%)
 
 # Filename of .env file
+ifeq ($(findstring /,$(ENV_SOURCE_FILE)),)
 ENV_FILE_CFG := $(ENV_DIR)/$(ENV_SOURCE_FILE).env
+else
+# Absolue path
+ENV_FILE_CFG := $(ENV_SOURCE_FILE)
+endif
 
 # Default filename, if CONFIG_ENV_SOURCE_FILE is empty
 ENV_FILE_BOARD := $(ENV_DIR)/$(CONFIG_SYS_BOARD:"%"=%).env
